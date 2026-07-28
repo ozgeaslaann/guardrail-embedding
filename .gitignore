@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environment
+.venv/
+
+# IDE
+.vscode/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# Training artifacts
+checkpoints/
+outputs/
+
+# WandB
+wandb/
+
+# Python cache
+.pytest_cache/

@@ -1,0 +1,20 @@
+[project]
+name = "guardrail-embedding"
+version = "0.1.0"
+description = "Guardrail embedding model for prompt injection detection."
+readme = "README.md"
+requires-python = ">=3.13"
+
+dependencies = [
+    "accelerate>=1.14.0",
+    "datasets>=5.0.0",
+    "huggingface-hub>=1.25.1",
+    "numpy>=2.5.1",
+    "pandas>=3.0.5",
+    "scikit-learn>=1.9.0",
+    "sentence-transformers>=5.6.1",
+    "tensorflow>=2.21.0",
+    "torch>=2.13.0",
+    "transformers>=5.14.1",
+    "wandb>=0.28.1",
+]
