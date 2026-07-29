@@ -1,15 +1,18 @@
 """
-Dataset generation script.
+Veri seti üretim scripti.
 
-This script:
-1. Loads a generation prompt.
-2. Loads the language model.
-3. Generates synthetic examples.
-4. Validates JSONL output.
-5. Saves the dataset.
+Bu script:
+1. Veri üretim promptunu yükler.
+2. Dil modelini yükler.
+3. Sentetik örnekler üretir.
+4. JSONL çıktısını doğrular.
+5. Veri setini kaydeder.
 """
 
 from pathlib import Path
+
+from transformers import AutoModelForCausalLM
+from transformers import AutoTokenizer
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -20,55 +23,88 @@ PROMPT_PATH = (
     / "attack_instruction_override.md"
 )
 
+MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
+
 
 def load_prompt(prompt_path: Path) -> str:
-    """Load a prompt file and return its contents."""
+    """Prompt dosyasını okur ve içeriğini metin olarak döndürür."""
+
     if not prompt_path.exists():
         raise FileNotFoundError(
-            f"Prompt file was not found: {prompt_path}"
+            f"Prompt dosyası bulunamadı: {prompt_path}"
         )
 
     if not prompt_path.is_file():
         raise ValueError(
-            f"Prompt path is not a file: {prompt_path}"
+            f"Verilen prompt yolu bir dosya değil: {prompt_path}"
         )
 
-    prompt = prompt_path.read_text(encoding="utf-8").strip()
+    prompt = prompt_path.read_text(
+        encoding="utf-8"
+    ).strip()
 
     if not prompt:
         raise ValueError(
-            f"Prompt file is empty: {prompt_path}"
+            f"Prompt dosyası boş: {prompt_path}"
         )
 
     return prompt
 
 
 def load_model():
-    """Load the language model."""
-    pass
+    """Tokenizer'ı ve dil modelini yükler."""
+
+    print(f"Model yükleniyor: {MODEL_NAME}")
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        MODEL_NAME
+    )
+
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        device_map="auto",
+        torch_dtype="auto",
+    )
+
+    print("Model başarıyla yüklendi.")
+
+    return tokenizer, model
 
 
 def generate_examples():
-    """Generate dataset examples."""
+    """Veri seti örneklerini üretir."""
     pass
 
 
 def validate_jsonl():
-    """Validate generated JSONL records."""
+    """Üretilen JSONL kayıtlarını doğrular."""
     pass
 
 
 def save_dataset():
-    """Save validated examples into dataset.jsonl."""
+    """Doğrulanmış örnekleri dataset.jsonl dosyasına kaydeder."""
     pass
 
 
 def main() -> None:
-    """Run the dataset generation workflow."""
+    """Veri seti üretim sürecini çalıştırır."""
+
     prompt = load_prompt(PROMPT_PATH)
 
-    print("Prompt loaded successfully.")
+    print("Prompt başarıyla yüklendi.")
+
+    tokenizer, model = load_model()
+
     print("-" * 50)
+    print("Yüklenen tokenizer:")
+    print(tokenizer.__class__.__name__)
+
+    print("-" * 50)
+    print("Yüklenen model:")
+    print(model.__class__.__name__)
+
+    print("-" * 50)
+    print("Kullanılan prompt:")
     print(prompt)
 
 
