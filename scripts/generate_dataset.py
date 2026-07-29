@@ -114,7 +114,7 @@ def generate_examples(
     with torch.inference_mode():
         generated_ids = model.generate(
             **model_inputs,
-            max_new_tokens=1200,
+            max_new_tokens=500,
             do_sample=True,
             temperature=0.7,
             top_p=0.9,
