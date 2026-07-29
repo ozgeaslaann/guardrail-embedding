@@ -11,6 +11,7 @@ Bu script:
 
 from pathlib import Path
 
+import torch
 from transformers import AutoModelForCausalLM
 from transformers import AutoTokenizer
 
@@ -67,6 +68,8 @@ def load_model():
         torch_dtype="auto",
     )
 
+    model.eval()
+
     print("Model başarıyla yüklendi.")
 
     return tokenizer, model
@@ -76,8 +79,8 @@ def generate_examples(
     tokenizer,
     model,
     prompt: str,
-):
-    """Promptu modelin anlayacağı giriş biçimine dönüştürür."""
+) -> str:
+    """Promptu modele gönderir ve üretilen metni döndürür."""
 
     print("Veri üretimine başlanıyor...")
 
@@ -96,10 +99,50 @@ def generate_examples(
         return_tensors="pt",
     )
 
+    model_inputs = model_inputs.to(model.device)
+
     print("Prompt başarıyla tokenlara dönüştürüldü.")
     print("-" * 50)
     print("Girdi tensor boyutu:")
     print(model_inputs["input_ids"].shape)
+
+    input_token_count = model_inputs["input_ids"].shape[-1]
+
+    print("-" * 50)
+    print("Model çıktı üretiyor...")
+
+    with torch.inference_mode():
+        generated_ids = model.generate(
+            **model_inputs,
+            max_new_tokens=1200,
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.9,
+            repetition_penalty=1.05,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+
+    generated_token_ids = generated_ids[
+        0,
+        input_token_count:
+    ]
+
+    generated_text = tokenizer.decode(
+        generated_token_ids,
+        skip_special_tokens=True,
+    ).strip()
+
+    if not generated_text:
+        raise ValueError(
+            "Model boş bir çıktı üretti."
+        )
+
+    print("Model çıktıyı başarıyla üretti.")
+    print("-" * 50)
+    print("Üretilen çıktı:")
+    print(generated_text)
+
+    return generated_text
 
 
 def validate_jsonl():
@@ -121,23 +164,15 @@ def main() -> None:
 
     tokenizer, model = load_model()
 
-    generate_examples(
+    generated_text = generate_examples(
         tokenizer,
         model,
         prompt,
     )
 
     print("-" * 50)
-    print("Yüklenen tokenizer:")
-    print(tokenizer.__class__.__name__)
-
-    print("-" * 50)
-    print("Yüklenen model:")
-    print(model.__class__.__name__)
-
-    print("-" * 50)
-    print("Kullanılan prompt:")
-    print(prompt)
+    print("Üretim süreci tamamlandı.")
+    print(f"Üretilen metin uzunluğu: {len(generated_text)} karakter")
 
 
 if __name__ == "__main__":
