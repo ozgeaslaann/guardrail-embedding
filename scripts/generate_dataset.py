@@ -20,7 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROMPT_PATH = (
     PROJECT_ROOT
     / "prompts"
-    / "attack_instruction_override.md"
+    / "attack"
+    / "instruction_override.md"
 )
 
 MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
@@ -71,9 +72,34 @@ def load_model():
     return tokenizer, model
 
 
-def generate_examples():
-    """Veri seti örneklerini üretir."""
-    pass
+def generate_examples(
+    tokenizer,
+    model,
+    prompt: str,
+):
+    """Promptu modelin anlayacağı giriş biçimine dönüştürür."""
+
+    print("Veri üretimine başlanıyor...")
+
+    messages = [
+        {
+            "role": "user",
+            "content": prompt,
+        }
+    ]
+
+    model_inputs = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt",
+    )
+
+    print("Prompt başarıyla tokenlara dönüştürüldü.")
+    print("-" * 50)
+    print("Girdi tensor boyutu:")
+    print(model_inputs["input_ids"].shape)
 
 
 def validate_jsonl():
@@ -94,6 +120,12 @@ def main() -> None:
     print("Prompt başarıyla yüklendi.")
 
     tokenizer, model = load_model()
+
+    generate_examples(
+        tokenizer,
+        model,
+        prompt,
+    )
 
     print("-" * 50)
     print("Yüklenen tokenizer:")
