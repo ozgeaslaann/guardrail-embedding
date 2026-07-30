@@ -70,6 +70,10 @@ def load_model():
 
     model.eval()
 
+    print(f"Model cihazı: {model.device}")
+    print(f"CUDA kullanılabilir mi?: {torch.cuda.is_available()}")
+
+
     print("Model başarıyla yüklendi.")
 
     return tokenizer, model
