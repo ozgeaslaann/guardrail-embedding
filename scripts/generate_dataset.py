@@ -72,8 +72,6 @@ def load_model():
 
     print(f"Model cihazı: {model.device}")
     print(f"CUDA kullanılabilir mi?: {torch.cuda.is_available()}")
-
-
     print("Model başarıyla yüklendi.")
 
     return tokenizer, model
@@ -90,9 +88,16 @@ def generate_examples(
 
     messages = [
         {
+            "role": "system",
+            "content": (
+                "You are an expert AI security dataset creator. "
+                "Follow the dataset generation rules exactly."
+            ),
+        },
+        {
             "role": "user",
             "content": prompt,
-        }
+        },
     ]
 
     model_inputs = tokenizer.apply_chat_template(
@@ -176,7 +181,10 @@ def main() -> None:
 
     print("-" * 50)
     print("Üretim süreci tamamlandı.")
-    print(f"Üretilen metin uzunluğu: {len(generated_text)} karakter")
+    print(
+        f"Üretilen metin uzunluğu: "
+        f"{len(generated_text)} karakter"
+    )
 
 
 if __name__ == "__main__":
