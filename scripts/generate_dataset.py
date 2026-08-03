@@ -7,7 +7,8 @@ import os
 from pathlib import Path
 
 import torch
-from transformers import AutoProcessor, Gemma3ForConditionalGeneration
+from transformers import AutoProcessor
+from transformers import Gemma3ForConditionalGeneration
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -64,7 +65,7 @@ def load_model():
     if not hf_token:
         raise ValueError(
             "HF_TOKEN bulunamadı. "
-            "Önce Colab gizli anahtarını ortam değişkenine aktar."
+            "Colab gizli anahtarını ortam değişkenine aktar."
         )
 
     print(f"Model yükleniyor: {MODEL_NAME}")
@@ -78,6 +79,7 @@ def load_model():
         MODEL_NAME,
         device_map="auto",
         dtype=torch.float16,
+        attn_implementation="eager",
         token=hf_token,
     ).eval()
 
@@ -92,25 +94,33 @@ def generate_text(
     model,
     prompt: str,
 ) -> str:
-    """Promptu modele gönderir ve metin çıktısını döndürür."""
+    """Promptu modele gönderir ve üretilen metni döndürür."""
 
-    full_prompt = (
+    system_message = (
         "You create high-quality AI security datasets. "
-        "Follow every generation rule exactly. "
-        "Return only valid JSONL without markdown.\n\n"
-        f"{prompt}"
+        "Follow every rule exactly. "
+        "Return only valid JSONL without markdown."
     )
 
     messages = [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": system_message,
+                }
+            ],
+        },
         {
             "role": "user",
             "content": [
                 {
                     "type": "text",
-                    "text": full_prompt,
+                    "text": prompt,
                 }
             ],
-        }
+        },
     ]
 
     model_inputs = processor.apply_chat_template(
@@ -119,7 +129,9 @@ def generate_text(
         tokenize=True,
         return_dict=True,
         return_tensors="pt",
-    ).to(model.device)
+    )
+
+    model_inputs = model_inputs.to(model.device)
 
     input_length = model_inputs["input_ids"].shape[-1]
 
@@ -128,11 +140,11 @@ def generate_text(
     with torch.inference_mode():
         output_ids = model.generate(
             **model_inputs,
-            max_new_tokens=700,
+            max_new_tokens=500,
             do_sample=False,
+            use_cache=False,
             pad_token_id=processor.tokenizer.eos_token_id,
             eos_token_id=processor.tokenizer.eos_token_id,
-            cache_implementation="static",
         )
 
     new_token_ids = output_ids[0, input_length:]
@@ -172,18 +184,20 @@ def validate_jsonl(
 ) -> list[dict[str, str]]:
     """Üretilen JSONL kayıtlarını doğrular."""
 
-    cleaned_text = generated_text.replace(
-        "```json",
-        "",
-    ).replace(
-        "```",
-        "",
-    ).strip()
+    cleaned_text = (
+        generated_text
+        .replace("```json", "")
+        .replace("```", "")
+        .strip()
+    )
 
     records = []
     seen_questions = set()
 
-    for line in cleaned_text.splitlines():
+    for line_number, line in enumerate(
+        cleaned_text.splitlines(),
+        start=1,
+    ):
         line = line.strip().removesuffix(",")
 
         if not line:
@@ -192,6 +206,9 @@ def validate_jsonl(
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
+            print(
+                f"Geçersiz JSON satırı atlandı: {line_number}"
+            )
             continue
 
         if not isinstance(record, dict):
@@ -263,12 +280,14 @@ def load_existing_questions(
 
         question = record.get("question")
 
-        if isinstance(question, str):
-            questions.add(
-                " ".join(
-                    question.lower().split()
-                )
-            )
+        if not isinstance(question, str):
+            continue
+
+        normalized_question = " ".join(
+            question.lower().split()
+        )
+
+        questions.add(normalized_question)
 
     return questions
 
@@ -322,6 +341,7 @@ def main() -> None:
     """Veri üretim sürecini çalıştırır."""
 
     prompt = load_prompt(PROMPT_PATH)
+
     processor, model = load_model()
 
     generated_text = generate_text(
