@@ -7,8 +7,7 @@ import os
 from pathlib import Path
 
 import torch
-from transformers import AutoProcessor
-from transformers import Gemma3ForConditionalGeneration
+from transformers import AutoProcessor, Gemma3ForConditionalGeneration
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -25,6 +24,13 @@ OUTPUT_PATH = (
     / "data"
     / "raw"
     / "dataset.jsonl"
+)
+
+RAW_OUTPUT_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "raw"
+    / "latest_generation.txt"
 )
 
 MODEL_NAME = "google/gemma-3-4b-it"
@@ -57,7 +63,7 @@ def load_model():
 
     if not hf_token:
         raise ValueError(
-            "HF_TOKEN ortam değişkeni bulunamadı. "
+            "HF_TOKEN bulunamadı. "
             "Önce Colab gizli anahtarını ortam değişkenine aktar."
         )
 
@@ -71,7 +77,7 @@ def load_model():
     model = Gemma3ForConditionalGeneration.from_pretrained(
         MODEL_NAME,
         device_map="auto",
-        torch_dtype=torch.float16,
+        dtype=torch.float16,
         token=hf_token,
     ).eval()
 
@@ -86,31 +92,25 @@ def generate_text(
     model,
     prompt: str,
 ) -> str:
-    """Promptu modele gönderir ve üretilen metni döndürür."""
+    """Promptu modele gönderir ve metin çıktısını döndürür."""
+
+    full_prompt = (
+        "You create high-quality AI security datasets. "
+        "Follow every generation rule exactly. "
+        "Return only valid JSONL without markdown.\n\n"
+        f"{prompt}"
+    )
 
     messages = [
-        {
-            "role": "system",
-            "content": [
-                {
-                    "type": "text",
-                    "text": (
-                        "You create high-quality AI security datasets. "
-                        "Follow all generation rules exactly. "
-                        "Return only valid JSONL."
-                    ),
-                }
-            ],
-        },
         {
             "role": "user",
             "content": [
                 {
                     "type": "text",
-                    "text": prompt,
+                    "text": full_prompt,
                 }
             ],
-        },
+        }
     ]
 
     model_inputs = processor.apply_chat_template(
@@ -129,14 +129,13 @@ def generate_text(
         output_ids = model.generate(
             **model_inputs,
             max_new_tokens=700,
-            do_sample=True,
-            temperature=0.7,
-            top_p=0.9,
-            repetition_penalty=1.05,
+            do_sample=False,
             pad_token_id=processor.tokenizer.eos_token_id,
+            eos_token_id=processor.tokenizer.eos_token_id,
+            cache_implementation="static",
         )
 
-    new_token_ids = output_ids[0][input_length:]
+    new_token_ids = output_ids[0, input_length:]
 
     generated_text = processor.decode(
         new_token_ids,
@@ -149,22 +148,46 @@ def generate_text(
     return generated_text
 
 
-def validate_jsonl(generated_text: str) -> list[dict]:
-    """Üretilen JSONL satırlarını doğrular."""
+def save_raw_output(
+    generated_text: str,
+    output_path: Path,
+) -> None:
+    """Modelin ham çıktısını kaydeder."""
+
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    output_path.write_text(
+        generated_text,
+        encoding="utf-8",
+    )
+
+    print(f"Ham çıktı kaydedildi: {output_path}")
+
+
+def validate_jsonl(
+    generated_text: str,
+) -> list[dict[str, str]]:
+    """Üretilen JSONL kayıtlarını doğrular."""
+
+    cleaned_text = generated_text.replace(
+        "```json",
+        "",
+    ).replace(
+        "```",
+        "",
+    ).strip()
 
     records = []
     seen_questions = set()
 
-    for line in generated_text.splitlines():
-        line = line.strip()
+    for line in cleaned_text.splitlines():
+        line = line.strip().removesuffix(",")
 
         if not line:
             continue
-
-        if line.startswith("```"):
-            continue
-
-        line = line.removesuffix(",")
 
         try:
             record = json.loads(line)
@@ -174,7 +197,10 @@ def validate_jsonl(generated_text: str) -> list[dict]:
         if not isinstance(record, dict):
             continue
 
-        if set(record.keys()) != {"question", "decision"}:
+        if set(record.keys()) != {
+            "question",
+            "decision",
+        }:
             continue
 
         question = record["question"]
@@ -210,7 +236,8 @@ def validate_jsonl(generated_text: str) -> list[dict]:
     if len(records) != EXPECTED_COUNT:
         raise ValueError(
             f"{EXPECTED_COUNT} geçerli kayıt bekleniyordu, "
-            f"{len(records)} kayıt bulundu."
+            f"{len(records)} kayıt bulundu. "
+            f"Ham çıktıyı kontrol et: {RAW_OUTPUT_PATH}"
         )
 
     return records
@@ -221,10 +248,10 @@ def load_existing_questions(
 ) -> set[str]:
     """Daha önce kaydedilmiş soruları okur."""
 
-    existing_questions = set()
-
     if not output_path.exists():
-        return existing_questions
+        return set()
+
+    questions = set()
 
     for line in output_path.read_text(
         encoding="utf-8"
@@ -236,20 +263,18 @@ def load_existing_questions(
 
         question = record.get("question")
 
-        if not isinstance(question, str):
-            continue
+        if isinstance(question, str):
+            questions.add(
+                " ".join(
+                    question.lower().split()
+                )
+            )
 
-        normalized_question = " ".join(
-            question.lower().split()
-        )
-
-        existing_questions.add(normalized_question)
-
-    return existing_questions
+    return questions
 
 
 def save_dataset(
-    records: list[dict],
+    records: list[dict[str, str]],
     output_path: Path,
 ) -> None:
     """Yeni kayıtları JSONL dosyasına ekler."""
@@ -281,22 +306,22 @@ def save_dataset(
         encoding="utf-8",
     ) as file:
         for record in new_records:
-            json_line = json.dumps(
-                record,
-                ensure_ascii=False,
+            file.write(
+                json.dumps(
+                    record,
+                    ensure_ascii=False,
+                )
+                + "\n"
             )
 
-            file.write(json_line + "\n")
-
     print(f"{len(new_records)} yeni kayıt kaydedildi.")
-    print(f"Dosya: {output_path}")
+    print(f"Veri seti: {output_path}")
 
 
 def main() -> None:
     """Veri üretim sürecini çalıştırır."""
 
     prompt = load_prompt(PROMPT_PATH)
-
     processor, model = load_model()
 
     generated_text = generate_text(
@@ -310,7 +335,14 @@ def main() -> None:
     print(generated_text)
     print("-" * 50)
 
-    records = validate_jsonl(generated_text)
+    save_raw_output(
+        generated_text,
+        RAW_OUTPUT_PATH,
+    )
+
+    records = validate_jsonl(
+        generated_text
+    )
 
     save_dataset(
         records,
