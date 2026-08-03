@@ -96,31 +96,23 @@ def generate_text(
 ) -> str:
     """Promptu modele gönderir ve üretilen metni döndürür."""
 
-    system_message = (
-        "You create high-quality AI security datasets. "
-        "Follow every rule exactly. "
-        "Return only valid JSONL without markdown."
+    full_prompt = (
+        "You create high-quality AI security datasets.\n"
+        "Follow every generation rule exactly.\n"
+        "Return only valid JSONL without markdown or explanations.\n\n"
+        f"{prompt}"
     )
 
     messages = [
-        {
-            "role": "system",
-            "content": [
-                {
-                    "type": "text",
-                    "text": system_message,
-                }
-            ],
-        },
         {
             "role": "user",
             "content": [
                 {
                     "type": "text",
-                    "text": prompt,
+                    "text": full_prompt,
                 }
             ],
-        },
+        }
     ]
 
     model_inputs = processor.apply_chat_template(
@@ -129,9 +121,7 @@ def generate_text(
         tokenize=True,
         return_dict=True,
         return_tensors="pt",
-    )
-
-    model_inputs = model_inputs.to(model.device)
+    ).to(model.device)
 
     input_length = model_inputs["input_ids"].shape[-1]
 
@@ -142,9 +132,6 @@ def generate_text(
             **model_inputs,
             max_new_tokens=500,
             do_sample=False,
-            use_cache=False,
-            pad_token_id=processor.tokenizer.eos_token_id,
-            eos_token_id=processor.tokenizer.eos_token_id,
         )
 
     new_token_ids = output_ids[0, input_length:]
@@ -258,8 +245,6 @@ def validate_jsonl(
         )
 
     return records
-
-
 def load_existing_questions(
     output_path: Path,
 ) -> set[str]:
