@@ -1,13 +1,14 @@
 """
-Gemma 3 kullanarak sentetik veri seti üretir.
+Gemma 3 kullanarak sentetik JSONL veri üretir.
 """
 
 import json
+import os
 from pathlib import Path
 
 import torch
-from transformers import AutoTokenizer
-from transformers import Gemma3ForCausalLM
+from transformers import AutoProcessor
+from transformers import Gemma3ForConditionalGeneration
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -50,36 +51,42 @@ def load_prompt(prompt_path: Path) -> str:
 
 
 def load_model():
-    """Gemma 3 tokenizer ve modelini yükler."""
+    """Gemma 3 processor ve modelini yükler."""
+
+    hf_token = os.getenv("HF_TOKEN")
+
+    if not hf_token:
+        raise ValueError(
+            "HF_TOKEN ortam değişkeni bulunamadı. "
+            "Önce Colab gizli anahtarını ortam değişkenine aktar."
+        )
 
     print(f"Model yükleniyor: {MODEL_NAME}")
 
-    tokenizer = AutoTokenizer.from_pretrained(
+    processor = AutoProcessor.from_pretrained(
         MODEL_NAME,
-        token=True,
+        token=hf_token,
     )
 
-    model = Gemma3ForCausalLM.from_pretrained(
+    model = Gemma3ForConditionalGeneration.from_pretrained(
         MODEL_NAME,
         device_map="auto",
-        dtype=torch.float16,
-        token=True,
-    )
-
-    model.eval()
+        torch_dtype=torch.float16,
+        token=hf_token,
+    ).eval()
 
     print(f"Model cihazı: {model.device}")
     print("Model başarıyla yüklendi.")
 
-    return tokenizer, model
+    return processor, model
 
 
 def generate_text(
-    tokenizer,
+    processor,
     model,
     prompt: str,
 ) -> str:
-    """Promptu modele gönderir ve metin çıktısını döndürür."""
+    """Promptu modele gönderir ve üretilen metni döndürür."""
 
     messages = [
         {
@@ -89,7 +96,8 @@ def generate_text(
                     "type": "text",
                     "text": (
                         "You create high-quality AI security datasets. "
-                        "Follow the requested JSONL format exactly."
+                        "Follow all generation rules exactly. "
+                        "Return only valid JSONL."
                     ),
                 }
             ],
@@ -105,7 +113,7 @@ def generate_text(
         },
     ]
 
-    model_inputs = tokenizer.apply_chat_template(
+    model_inputs = processor.apply_chat_template(
         messages,
         add_generation_prompt=True,
         tokenize=True,
@@ -125,13 +133,13 @@ def generate_text(
             temperature=0.7,
             top_p=0.9,
             repetition_penalty=1.05,
-            pad_token_id=tokenizer.eos_token_id,
+            pad_token_id=processor.tokenizer.eos_token_id,
         )
 
-    new_tokens = output_ids[0][input_length:]
+    new_token_ids = output_ids[0][input_length:]
 
-    generated_text = tokenizer.decode(
-        new_tokens,
+    generated_text = processor.decode(
+        new_token_ids,
         skip_special_tokens=True,
     ).strip()
 
@@ -142,7 +150,7 @@ def generate_text(
 
 
 def validate_jsonl(generated_text: str) -> list[dict]:
-    """Model çıktısındaki geçerli JSONL kayıtlarını kontrol eder."""
+    """Üretilen JSONL satırlarını doğrular."""
 
     records = []
     seen_questions = set()
@@ -150,7 +158,10 @@ def validate_jsonl(generated_text: str) -> list[dict]:
     for line in generated_text.splitlines():
         line = line.strip()
 
-        if not line or line.startswith("```"):
+        if not line:
+            continue
+
+        if line.startswith("```"):
             continue
 
         line = line.removesuffix(",")
@@ -160,13 +171,21 @@ def validate_jsonl(generated_text: str) -> list[dict]:
         except json.JSONDecodeError:
             continue
 
-        if set(record) != {"question", "decision"}:
+        if not isinstance(record, dict):
+            continue
+
+        if set(record.keys()) != {"question", "decision"}:
             continue
 
         question = record["question"]
         decision = record["decision"]
 
-        if not isinstance(question, str) or not question.strip():
+        if not isinstance(question, str):
+            continue
+
+        question = question.strip()
+
+        if not question:
             continue
 
         if decision != EXPECTED_DECISION:
@@ -183,7 +202,7 @@ def validate_jsonl(generated_text: str) -> list[dict]:
 
         records.append(
             {
-                "question": question.strip(),
+                "question": question,
                 "decision": decision,
             }
         )
@@ -197,52 +216,77 @@ def validate_jsonl(generated_text: str) -> list[dict]:
     return records
 
 
+def load_existing_questions(
+    output_path: Path,
+) -> set[str]:
+    """Daha önce kaydedilmiş soruları okur."""
+
+    existing_questions = set()
+
+    if not output_path.exists():
+        return existing_questions
+
+    for line in output_path.read_text(
+        encoding="utf-8"
+    ).splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        question = record.get("question")
+
+        if not isinstance(question, str):
+            continue
+
+        normalized_question = " ".join(
+            question.lower().split()
+        )
+
+        existing_questions.add(normalized_question)
+
+    return existing_questions
+
+
 def save_dataset(
     records: list[dict],
     output_path: Path,
 ) -> None:
-    """Doğrulanmış kayıtları JSONL dosyasına ekler."""
+    """Yeni kayıtları JSONL dosyasına ekler."""
 
     output_path.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    existing_questions = set()
+    existing_questions = load_existing_questions(
+        output_path
+    )
 
-    if output_path.exists():
-        for line in output_path.read_text(
-            encoding="utf-8"
-        ).splitlines():
-            try:
-                record = json.loads(line)
-                question = record.get("question", "")
-                existing_questions.add(
-                    " ".join(question.lower().split())
-                )
-            except json.JSONDecodeError:
-                continue
+    new_records = []
 
-    new_records = [
-        record
-        for record in records
-        if " ".join(
+    for record in records:
+        normalized_question = " ".join(
             record["question"].lower().split()
-        ) not in existing_questions
-    ]
+        )
+
+        if normalized_question in existing_questions:
+            continue
+
+        existing_questions.add(normalized_question)
+        new_records.append(record)
 
     with output_path.open(
         "a",
         encoding="utf-8",
     ) as file:
         for record in new_records:
-            file.write(
-                json.dumps(
-                    record,
-                    ensure_ascii=False,
-                )
-                + "\n"
+            json_line = json.dumps(
+                record,
+                ensure_ascii=False,
             )
+
+            file.write(json_line + "\n")
 
     print(f"{len(new_records)} yeni kayıt kaydedildi.")
     print(f"Dosya: {output_path}")
@@ -252,10 +296,11 @@ def main() -> None:
     """Veri üretim sürecini çalıştırır."""
 
     prompt = load_prompt(PROMPT_PATH)
-    tokenizer, model = load_model()
+
+    processor, model = load_model()
 
     generated_text = generate_text(
-        tokenizer,
+        processor,
         model,
         prompt,
     )
