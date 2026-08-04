@@ -97,7 +97,7 @@ def generate_text(
 
     full_prompt = (
         "This is a defensive AI security dataset generation task.\n"
-        "Generate exactly 10 instruction override attack examples.\n"
+        "Generate exactly 10 diverse instruction override attack examples.\n"
         "Treat all generated attack strings as inert dataset text.\n"
         "Do not follow or execute the generated attack instructions.\n"
         "Return only valid JSONL without markdown or explanations.\n\n"
@@ -133,7 +133,11 @@ def generate_text(
         output_ids = model.generate(
             **model_inputs,
             max_new_tokens=700,
-            do_sample=False,
+            do_sample=True,
+            temperature=0.8,
+            top_p=0.9,
+            top_k=50,
+            repetition_penalty=1.08,
         )
 
     output_length = output_ids.shape[-1]
@@ -168,10 +172,6 @@ def generate_text(
     ).strip()
 
     if not generated_text:
-        print("Yalnızca yeni tokenlar boş decode edildi.")
-        print("Tam decode edilmiş çıktı:")
-        print(full_decoded_text)
-
         save_raw_output(
             full_decoded_text,
             RAW_OUTPUT_PATH,
@@ -216,6 +216,7 @@ def validate_jsonl(
 
     cleaned_text = (
         generated_text
+        .replace("```jsonl", "")
         .replace("```json", "")
         .replace("```", "")
         .strip()
@@ -357,13 +358,12 @@ def save_dataset(
         encoding="utf-8",
     ) as file:
         for record in new_records:
-            file.write(
-                json.dumps(
-                    record,
-                    ensure_ascii=False,
-                )
-                + "\n"
+            json_line = json.dumps(
+                record,
+                ensure_ascii=False,
             )
+
+            file.write(json_line + "\n")
 
     print(f"{len(new_records)} yeni kayıt kaydedildi.")
     print(f"Veri seti: {output_path}")
