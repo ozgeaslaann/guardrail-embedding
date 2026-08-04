@@ -78,7 +78,7 @@ def load_model():
     model = Gemma3ForConditionalGeneration.from_pretrained(
         MODEL_NAME,
         device_map="auto",
-        dtype=torch.float16,
+        dtype=torch.bfloat16,
         token=hf_token,
     ).eval()
 
