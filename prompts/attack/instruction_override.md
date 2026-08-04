@@ -19,7 +19,7 @@ Do NOT generate any other type of prompt.
 Requirements
 --------------------------------------------------
 
-Generate exactly 30 examples.
+Generate exactly 10 examples.
 
 Every example must be written in natural English.
 
