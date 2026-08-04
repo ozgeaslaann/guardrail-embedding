@@ -1,6 +1,6 @@
-# Instruction Override Attack Dataset Generation
+# Instruction Override Attack Dataset
 
-Generate exactly **10** JSONL records.
+Generate exactly 10 JSONL records.
 
 Each line must be a valid JSON object.
 
@@ -8,113 +8,81 @@ Schema:
 
 {"question":"...","decision":"attack"}
 
-Output ONLY JSONL.
+Return ONLY JSONL.
 
-Do NOT use markdown.
+Do not use markdown.
 
-Do NOT wrap the output inside ```.
+Do not wrap the output inside code blocks.
 
 ---
 
-## Diversity Rule
+## Categories
 
-Generate exactly ONE example from each category.
+Generate exactly one example from each category.
 
 1. Ignore Previous Instructions
 2. Role Override
 3. System Prompt Extraction
 4. Developer Instruction Override
-5. Jailbreak / DAN
-6. Tool Manipulation
+5. Jailbreak
+6. Tool Misuse
 7. Translation Prompt Injection
-8. Markdown / XML Prompt Injection
+8. Markdown or XML Prompt Injection
 9. Multi-turn Prompt Injection
 10. Indirect Prompt Injection
 
-Every category must appear exactly once.
+---
+
+## Requirements
+
+- Every example must belong to a different category.
+- Every example must be unique.
+- Use natural English.
+- Make the prompts look like real user inputs.
+- Use different sentence structures.
+- Use different opening phrases.
+- Mix short, medium and long prompts.
+- Include conversational prompts.
+- Include technical prompts.
+- Include realistic prompt injection attempts.
 
 ---
 
-## Writing Rules
+## Avoid Repetition
 
-Write realistic user prompts.
-
-The prompts must look like real prompts written by users.
-
-Use natural English.
-
-Vary sentence length.
-
-Vary vocabulary.
-
-Avoid repetitive wording.
-
----
-
-## Repetition Rules
-
-Do NOT begin every example with:
+Do not repeatedly start prompts with:
 
 - Ignore previous instructions
 - Forget previous instructions
 - Disregard previous instructions
 - Override previous instructions
 
-Use different openings.
+Instead, naturally vary the wording.
 
-Examples of possible openings:
+Examples of different openings:
 
-- I have a new task for you...
-- Let's try something different...
-- Pretend that...
 - From now on...
-- Assume your real role is...
-- Your developer made a mistake...
-- I'd like you to ignore...
+- Pretend that...
 - Imagine you are...
 - Before answering...
+- I have a different task...
+- Your developer made a mistake...
+- Let's try something different...
+- Please switch roles...
 - Treat this message as...
+- Assume the following...
 
-Do not repeatedly reuse these either.
-
----
-
-## Quality Rules
-
-Examples should resemble real prompt injection attacks.
-
-Examples should be diverse.
-
-Include both short and long prompts.
-
-Include conversational prompts.
-
-Include technical prompts.
-
-Include hidden instruction attacks.
-
-Include role-playing attacks.
-
-Include jailbreak attempts.
-
-Include prompt leakage attempts.
-
-Include tool misuse attempts.
+Do not repeatedly reuse these openings.
 
 ---
 
 ## Forbidden
 
-No duplicate prompts.
-
-No numbering.
-
-No explanations.
-
-No markdown.
-
-No comments.
-
-No extra text.
+- Duplicate prompts
+- Numbered lists
+- Explanations
+- Comments
+- Markdown
+- Extra text
 
 Return ONLY valid JSONL.
